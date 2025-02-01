@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Solana Token Creator</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    label { display: block; margin-top: 1em; }
+    input, select { padding: 0.5em; width: 300px; }
+    button { margin-top: 1.5em; padding: 0.7em 1.5em; }
+  </style>
+</head>
+<body>
+  <h1>Solana Token Creator</h1>
+  <form id="tokenForm" method="POST" action="/create-token">
+    <label for="network">Kies het netwerk:</label>
+    <select name="network" id="network">
+      <option value="devnet">Devnet</option>
+      <option value="mainnet-beta">Mainnet-beta</option>
+    </select>
+
+    <label for="keypairPath">Keypair pad:</label>
+    <input type="text" name="keypairPath" id="keypairPath" value="~/.config/solana/id.json" required>
+
+    <label for="tokenName">Token Naam:</label>
+    <input type="text" name="tokenName" id="tokenName" placeholder="Bijv. MijnToken" required>
+
+    <label for="tokenSymbol">Token Symbool:</label>
+    <input type="text" name="tokenSymbol" id="tokenSymbol" placeholder="Bijv. MTK" required>
+
+    <label for="metadataUri">Metadata URI:</label>
+    <input type="text" name="metadataUri" id="metadataUri" placeholder="Bijv. https://ipfs.io/ipfs/je-json-bestand" required>
+
+    <label for="totalSupply">Totale Supply:</label>
+    <input type="number" name="totalSupply" id="totalSupply" placeholder="Bijv. 1000000000" required>
+
+    <label for="decimals">Decimals:</label>
+    <input type="number" name="decimals" id="decimals" placeholder="Bijv. 9" required>
+
+    <button type="submit">Maak Token</button>
+  </form>
+</body>
+</html>
