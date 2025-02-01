@@ -15,7 +15,14 @@ const {
   LAMPORTS_PER_SOL,
   SystemProgram,
 } = require('@solana/web3.js');
-const splToken = require('@solana/spl-token');
+
+// Gebruik de nieuwe API van @solana/spl-token: importeer de functies als named exports
+const {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  TOKEN_PROGRAM_ID,
+} = require('@solana/spl-token');
 
 // Importeer Metaplex Token Metadata functies
 const {
@@ -62,7 +69,11 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     const connection = new Connection(clusterApiUrl(network), 'confirmed');
 
     // Vervang "~" door de Windows home-directory (USERPROFILE of HOMEPATH)
-    const expandedKeypairPath = keypairPath.replace('~', process.env.USERPROFILE || process.env.HOMEPATH);
+    const homeDir = process.env.USERPROFILE || process.env.HOMEPATH;
+    if (!homeDir) {
+      throw new Error("Home directory niet gevonden. Zorg dat USERPROFILE of HOMEPATH is ingesteld.");
+    }
+    const expandedKeypairPath = keypairPath.replace('~', homeDir);
     if (!fs.existsSync(expandedKeypairPath)) {
       throw new Error(`Keypair bestand niet gevonden op: ${expandedKeypairPath}`);
     }
@@ -77,27 +88,28 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     console.log("Gegenereerde Deposit Address:", depositWallet.publicKey.toBase58());
 
     // (Optioneel) Transfer SOL naar het deposit-adres kan hier worden toegevoegd
-    // Voorbeeld:
-    // const transferTx = new Transaction().add(
-    //   SystemProgram.transfer({
-    //     fromPubkey: payer.publicKey,
-    //     toPubkey: depositWallet.publicKey,
-    //     lamports: 0.01 * LAMPORTS_PER_SOL, // bijvoorbeeld 0.01 SOL
-    //   })
-    // );
-    // await sendAndConfirmTransaction(connection, transferTx, [payer]);
+    // Voorbeeld (deze code is uitgecommentarieerd):
+    /*
+    const transferTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: payer.publicKey,
+        toPubkey: depositWallet.publicKey,
+        lamports: 0.01 * LAMPORTS_PER_SOL, // bijvoorbeeld 0.01 SOL
+      })
+    );
+    await sendAndConfirmTransaction(connection, transferTx, [payer]);
+    */
 
-    // Maak de token mint aan
+    // Maak de token mint aan met de nieuwe API
     console.log("Creëer token mint...");
-    const mint = await splToken.Token.createMint(
+    const mint = await createMint(
       connection,
       payer,
       payer.publicKey, // mint authority
       null,            // freeze authority (optioneel)
-      parseInt(decimals),
-      splToken.TOKEN_PROGRAM_ID
+      parseInt(decimals)
     );
-    console.log("Token Mint Address:", mint.publicKey.toBase58());
+    console.log("Token Mint Address:", mint.toBase58());
 
     // Verdeel de token supply in 70% en 30%
     const totalSupplyBig = BigInt(totalSupply);
@@ -105,29 +117,41 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     const otherShare = totalSupplyBig - userShare;
 
     // Maak een token account voor het opgegeven walletadres (70% tokens)
-    const userWalletPublicKey = new PublicKey(userWallet);
-    const userTokenAccount = await mint.getOrCreateAssociatedAccountInfo(userWalletPublicKey);
+    const userTokenAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      mint,
+      new PublicKey(userWallet)
+    );
 
     // Genereer een nieuw wallet (en token account) voor de overige 30%
     const generatedWallet = Keypair.generate();
-    const generatedWalletPublicKey = generatedWallet.publicKey;
-    const generatedTokenAccount = await mint.getOrCreateAssociatedAccountInfo(generatedWalletPublicKey);
+    const generatedTokenAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      mint,
+      generatedWallet.publicKey
+    );
 
     // Mint 70% tokens naar de opgegeven wallet
     console.log("Mint 70% van de tokens naar jouw wallet...");
-    await mint.mintTo(
+    await mintTo(
+      connection,
+      payer,
+      mint,
       userTokenAccount.address,
       payer.publicKey,
-      [],
       userShare
     );
 
     // Mint 30% tokens naar het nieuw gegenereerde wallet
     console.log("Mint 30% van de tokens naar het gegenereerde wallet...");
-    await mint.mintTo(
+    await mintTo(
+      connection,
+      payer,
+      mint,
       generatedTokenAccount.address,
       payer.publicKey,
-      [],
       otherShare
     );
 
@@ -149,14 +173,14 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       }
     }
 
-    // Bouw het metadata object. Let op: het externe metadata bestand (via metadataUri) dient ook de extra velden te bevatten.
+    // Bouw het metadata object. Het externe metadata bestand (via metadataUri) moet ook de extra velden bevatten.
     const metadataData = {
       name: tokenName,
       symbol: tokenSymbol,
-      uri: metadataUri,  // Zorg dat dit verwijst naar een JSON-bestand waarin ook 'logo' en 'socials' staan
+      uri: metadataUri,  // Dit verwijst naar een JSON-bestand waarin je extra velden (zoals logo en socials) kunt opnemen
       sellerFeeBasisPoints: 0,
       creators: null,
-      // Extra velden (deze data kun je ook meenemen in het externe JSON-bestand):
+      // Extra data kun je ook in dit object kwijt, maar doorgaans zet je dit in je externe JSON:
       // logoUrl: logoUrl,
       // socials: socialsObj,
     };
@@ -166,14 +190,14 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     const metadataSeeds = [
       Buffer.from('metadata'),
       TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.publicKey.toBuffer(),
+      mint.toBuffer(), // let op: mint is nu een PublicKey
     ];
     const [metadataPDA] = await PublicKey.findProgramAddress(metadataSeeds, TOKEN_METADATA_PROGRAM_ID);
 
     const metadataIx = createCreateMetadataAccountV2Instruction(
       {
         metadata: metadataPDA,
-        mint: mint.publicKey,
+        mint: mint,
         mintAuthority: payer.publicKey,
         payer: payer.publicKey,
         updateAuthority: payer.publicKey,
@@ -192,7 +216,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     // Bouw een overzichtspagina met de resultaten
     res.send(`
       <h1>Token Creëren Gelukt!</h1>
-      <p><strong>Token Mint:</strong> ${mint.publicKey.toBase58()}</p>
+      <p><strong>Token Mint:</strong> ${mint.toBase58()}</p>
       <p><strong>Jouw Token Account (70%):</strong> ${userTokenAccount.address.toBase58()}</p>
       <p><strong>Gegenereerd Wallet (30%):</strong> ${generatedTokenAccount.address.toBase58()}</p>
       <p><strong>Deposit Address:</strong> ${depositWallet.publicKey.toBase58()}</p>
