@@ -149,31 +149,31 @@ async function processTokenCreation(connection, payer, formData, req, res) {
   const transaction = new Transaction().add(metadataIx);
   const txId = await sendAndConfirmTransaction(connection, transaction, [payer]);
   
-  res.send(`
-    <h1>Token Creëren Gelukt!</h1>
-    <p><strong>Token Mint:</strong> ${mint.toBase58()}</p>
-    <p><strong>Jouw Token Account (70%):</strong> ${userTokenAccount.address.toBase58()}</p>
-    <p><strong>Gereseveerde Wallet (30% voor liquiditeit):</strong> ${generatedTokenAccount.address.toBase58()}</p>
-    <p><strong>Deposit Address:</strong> ${depositWallet.publicKey.toBase58()}</p>
-    <p><strong>Metadata PDA:</strong> ${metadataPDA.toBase58()}</p>
-    <p><strong>Metadata Transactie ID:</strong> ${txId}</p>
-    ${logoUrl ? `<p><strong>Logo URL:</strong> <a href="${logoUrl}" target="_blank">${logoUrl}</a></p>` : ''}
-    <p>Bewaar deze gegevens zorgvuldig!</p>
-    <p>Om de overige 30% beschikbaar te maken voor trading op DEX’s, voeg je liquiditeit toe via het volgende formulier:</p>
-    <form method="POST" action="/create-liquidity">
-      <input type="hidden" name="tokenMint" value="${mint.toBase58()}">
-      <input type="hidden" name="reserveTokenAccount" value="${generatedTokenAccount.address.toBase58()}">
-      <!-- Stuur ook de payerSecret mee zodat liquiditeitsacties getekend kunnen worden -->
-      <input type="hidden" name="payerSecret" value="${Buffer.from(payer.secretKey).toString('hex')}">
-      <label for="amountToken">Hoeveelheid tokens (van de reserve) om te gebruiken:</label>
-      <input type="number" name="amountToken" id="amountToken" placeholder="Bijv. 300000000" required>
-      <label for="amountSol">Hoeveelheid SOL om te koppelen:</label>
-      <input type="number" step="0.000001" name="amountSol" id="amountSol" placeholder="Bijv. 0.5" required>
-      <button type="submit">Voeg Liquiditeit Toe</button>
-    </form>
-    <a href="/">Ga terug</a>
-  `);
-}
+res.send(`
+  <h1>Token Creëren Gelukt!</h1>
+  <p><strong>Token Mint:</strong> ${mint.toBase58()}</p>
+  <p><strong>Jouw Token Account (70%):</strong> ${userTokenAccount.address.toBase58()}</p>
+  <p><strong>Gereseveerde Wallet (30% voor liquiditeit):</strong> ${generatedTokenAccount.address.toBase58()}</p>
+  <p><strong>Deposit Address:</strong> ${depositWallet.publicKey.toBase58()}</p>
+  <p><strong>Metadata PDA:</strong> ${metadataPDA.toBase58()}</p>
+  <p><strong>Metadata Transactie ID:</strong> ${txId}</p>
+  ${logoUrl ? `<p><strong>Logo URL:</strong> <a href="${logoUrl}" target="_blank">${logoUrl}</a></p>` : ''}
+  <p>Bewaar deze gegevens zorgvuldig!</p>
+  <p>Om de overige 30% beschikbaar te maken voor trading op DEX’s, voeg je liquiditeit toe via het volgende formulier:</p>
+  <form method="POST" action="/create-liquidity">
+    <input type="hidden" name="tokenMint" value="${mint.toBase58()}">
+    <input type="hidden" name="tokenSymbol" value="${tokenSymbol}">
+    <input type="hidden" name="reserveTokenAccount" value="${generatedTokenAccount.address.toBase58()}">
+    <!-- Stuur ook de payerSecret mee zodat liquiditeitsacties getekend kunnen worden -->
+    <input type="hidden" name="payerSecret" value="${Buffer.from(payer.secretKey).toString('hex')}">
+    <label for="amountToken">Hoeveelheid tokens (van de reserve) om te gebruiken:</label>
+    <input type="number" name="amountToken" id="amountToken" placeholder="Bijv. 300000000" required>
+    <label for="amountSol">Hoeveelheid SOL om te koppelen:</label>
+    <input type="number" step="0.000001" name="amountSol" id="amountSol" placeholder="Bijv. 0.5" required>
+    <button type="submit">Voeg Liquiditeit Toe</button>
+  </form>
+  <a href="/">Ga terug</a>
+`);
 
 // --------------------------------------
 // Endpoint: Initiële Tokencreatie (/create-token)
