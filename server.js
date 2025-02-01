@@ -64,20 +64,6 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     userWallet  // Jouw walletadres voor 70%
   } = req.body;
 
-  try {
-    // Verbinding maken met het gekozen Solana-netwerk
-    const connection = new Connection(clusterApiUrl(network), 'confirmed');
-
-    // Vervang "~" door de Windows home-directory (USERPROFILE of HOMEPATH)
-    const homeDir = process.env.USERPROFILE || process.env.HOMEPATH;
-    if (!homeDir) {
-      throw new Error("Home directory niet gevonden. Zorg dat USERPROFILE of HOMEPATH is ingesteld.");
-    }
-    const expandedKeypairPath = keypairPath.replace('~', homeDir);
-    if (!fs.existsSync(expandedKeypairPath)) {
-      throw new Error(`Keypair bestand niet gevonden op: ${expandedKeypairPath}`);
-    }
-
     // Lees en maak de keypair aan
     const secretKeyString = fs.readFileSync(expandedKeypairPath, 'utf8');
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
