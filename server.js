@@ -1,12 +1,9 @@
-// server.js
-
-// Importeer benodigde modules
 const express = require('express');
 const bodyParser = require('body-parser');
 const multer  = require('multer');
 const fs = require('fs');
 const path = require('path');
-const QRCode = require('qrcode'); // npm install qrcode
+const QRCode = require('qrcode');
 const {
   Connection,
   clusterApiUrl,
@@ -18,7 +15,6 @@ const {
   SystemProgram,
 } = require('@solana/web3.js');
 
-// Importeer functies van @solana/spl-token
 const {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -26,17 +22,13 @@ const {
   TOKEN_PROGRAM_ID,
 } = require('@solana/spl-token');
 
-// Importeer de functie voor het maken van de metadata account
 const { createCreateMetadataAccountV2Instruction } = require('@metaplex-foundation/mpl-token-metadata');
 
-// Definieer handmatig de Metaplex Token Metadata Program ID
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
-// Initialiseer Express
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configureer Multer voor logo uploads (bestanden worden in de map "uploads" opgeslagen)
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'uploads/');
@@ -46,38 +38,32 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage: storage });
-
-// Gebruik de statische map en body-parser middleware
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// ------------------------------------
-// Helper: Process Token Creation Logic
-// ------------------------------------
+// -------------------------------
+// Helper: Process Token Creation
+// -------------------------------
 async function processTokenCreation(connection, payer, formData, req, res) {
   const { tokenName, tokenSymbol, metadataUri, totalSupply, decimals, socials, userWallet } = formData;
   
-  // Genereer een deposit wallet (voor toekomstige SOL-transacties)
   const depositWallet = Keypair.generate();
   console.log("Gegenereerde Deposit Address:", depositWallet.publicKey.toBase58());
   
-  // Maak de token mint aan
   console.log("Creëer token mint...");
   const mint = await createMint(
     connection,
     payer,
-    payer.publicKey, // mint authority
-    null,            // freeze authority (optioneel)
+    payer.publicKey,
+    null,         
     parseInt(decimals)
   );
   console.log("Token Mint Address:", mint.toBase58());
   
-  // Verdeel de totale supply: 70% naar de opgegeven wallet en 30% naar een nieuw gegenereerde wallet
   const totalSupplyBig = BigInt(totalSupply);
   const userShare = totalSupplyBig * 70n / 100n;
-  const otherShare = totalSupplyBig - userShare;
+  const reserveShare = totalSupplyBig - userShare;
   
-  // Maak een token account aan voor het door de gebruiker opgegeven adres (70% tokens)
   const userTokenAccount = await getOrCreateAssociatedTokenAccount(
     connection,
     payer,
@@ -85,7 +71,6 @@ async function processTokenCreation(connection, payer, formData, req, res) {
     new PublicKey(userWallet)
   );
   
-  // Genereer een nieuw wallet (en token account) voor de overige 30%
   const generatedWallet = Keypair.generate();
   const generatedTokenAccount = await getOrCreateAssociatedTokenAccount(
     connection,
@@ -94,7 +79,6 @@ async function processTokenCreation(connection, payer, formData, req, res) {
     generatedWallet.publicKey
   );
   
-  // Mint 70% tokens naar het opgegeven adres
   console.log("Mint 70% tokens naar jouw wallet...");
   await mintTo(
     connection,
@@ -105,25 +89,22 @@ async function processTokenCreation(connection, payer, formData, req, res) {
     userShare
   );
   
-  // Mint 30% tokens naar de nieuw gegenereerde wallet
-  console.log("Mint 30% tokens naar het gegenereerde wallet...");
+  console.log("Mint 30% tokens naar de gereserveerde wallet...");
   await mintTo(
     connection,
     payer,
     mint,
     generatedTokenAccount.address,
     payer.publicKey,
-    otherShare
+    reserveShare
   );
   
-  // Verwerk het geüploade logo (indien aanwezig)
   let logoUrl = "";
   if (req.file) {
     logoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     console.log("Logo geüpload naar:", logoUrl);
   }
   
-  // Probeer de extra socials te parsen (als JSON)
   let socialsObj = null;
   if (socials) {
     try {
@@ -133,7 +114,6 @@ async function processTokenCreation(connection, payer, formData, req, res) {
     }
   }
   
-  // Bouw het metadata object
   const metadataData = {
     name: tokenName,
     symbol: tokenSymbol,
@@ -169,49 +149,55 @@ async function processTokenCreation(connection, payer, formData, req, res) {
   const transaction = new Transaction().add(metadataIx);
   const txId = await sendAndConfirmTransaction(connection, transaction, [payer]);
   
-  // Toon het resultaat aan de gebruiker
   res.send(`
     <h1>Token Creëren Gelukt!</h1>
     <p><strong>Token Mint:</strong> ${mint.toBase58()}</p>
     <p><strong>Jouw Token Account (70%):</strong> ${userTokenAccount.address.toBase58()}</p>
-    <p><strong>Gegenereerd Wallet (30%):</strong> ${generatedTokenAccount.address.toBase58()}</p>
+    <p><strong>Gereseveerde Wallet (30% voor liquiditeit):</strong> ${generatedTokenAccount.address.toBase58()}</p>
     <p><strong>Deposit Address:</strong> ${depositWallet.publicKey.toBase58()}</p>
     <p><strong>Metadata PDA:</strong> ${metadataPDA.toBase58()}</p>
     <p><strong>Metadata Transactie ID:</strong> ${txId}</p>
     ${logoUrl ? `<p><strong>Logo URL:</strong> <a href="${logoUrl}" target="_blank">${logoUrl}</a></p>` : ''}
     <p>Bewaar deze gegevens zorgvuldig!</p>
+    <p>Om de overige 30% beschikbaar te maken voor trading op DEX’s, voeg je liquiditeit toe via het volgende formulier:</p>
+    <form method="POST" action="/create-liquidity">
+      <input type="hidden" name="tokenMint" value="${mint.toBase58()}">
+      <input type="hidden" name="reserveTokenAccount" value="${generatedTokenAccount.address.toBase58()}">
+      <!-- Stuur ook de payerSecret mee zodat liquiditeitsacties getekend kunnen worden -->
+      <input type="hidden" name="payerSecret" value="${Buffer.from(payer.secretKey).toString('hex')}">
+      <label for="amountToken">Hoeveelheid tokens (van de reserve) om te gebruiken:</label>
+      <input type="number" name="amountToken" id="amountToken" placeholder="Bijv. 300000000" required>
+      <label for="amountSol">Hoeveelheid SOL om te koppelen:</label>
+      <input type="number" step="0.000001" name="amountSol" id="amountSol" placeholder="Bijv. 0.5" required>
+      <button type="submit">Voeg Liquiditeit Toe</button>
+    </form>
     <a href="/">Ga terug</a>
   `);
 }
 
-// ------------------------------------
-// Route: Initiële tokencreatie (/create-token)
-// ------------------------------------
+// --------------------------------------
+// Endpoint: Initiële Tokencreatie (/create-token)
+// --------------------------------------
 app.post('/create-token', upload.single('logo'), async (req, res) => {
   try {
     const { network, tokenName, tokenSymbol, metadataUri, totalSupply, decimals, socials, userWallet } = req.body;
     const formData = { network, tokenName, tokenSymbol, metadataUri, totalSupply, decimals, socials, userWallet };
     
-    // Maak verbinding met het gekozen netwerk
     const connection = new Connection(clusterApiUrl(network));
     console.log("Using network:", network);
     
-    // Genereer een nieuwe wallet (payer)
     const payer = Keypair.generate();
     console.log("Generated wallet address:", payer.publicKey.toBase58());
     
     if (network === 'devnet') {
-      // Op devnet: Vraag airdrop aan en ga direct verder
       const airdropSignature = await connection.requestAirdrop(payer.publicKey, 0.1 * LAMPORTS_PER_SOL);
       await connection.confirmTransaction(airdropSignature);
       console.log("Airdrop successful on devnet.");
       await processTokenCreation(connection, payer, formData, req, res);
     } else if (network === 'mainnet-beta') {
-      // Op mainnet-beta: controleer saldo
       const balance = await connection.getBalance(payer.publicKey);
       console.log("Mainnet wallet balance:", balance);
       if (balance < 0.1 * LAMPORTS_PER_SOL) {
-        // Onvoldoende saldo: toon pagina met walletgegevens en een "Continue"-knop.
         const walletDetails = `Address: ${payer.publicKey.toBase58()}\nSecret: ${Buffer.from(payer.secretKey).toString('hex')}`;
         const qrCodeDataUrl = await QRCode.toDataURL(walletDetails);
         return res.send(`
@@ -221,7 +207,6 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
           <p><strong>Secret Key (Hex):</strong> ${Buffer.from(payer.secretKey).toString('hex')}</p>
           <img src="${qrCodeDataUrl}" alt="QR Code met wallet details"/>
           <form method="POST" action="/continue-token" enctype="multipart/form-data">
-            <!-- Verberg de oorspronkelijke formuliergegevens en de payer-secret -->
             <input type="hidden" name="network" value="${network}">
             <input type="hidden" name="tokenName" value="${tokenName}">
             <input type="hidden" name="tokenSymbol" value="${tokenSymbol}">
@@ -235,7 +220,6 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
           </form>
         `);
       } else {
-        // Mocht er (zelden) al voldoende saldo zijn, ga direct verder
         await processTokenCreation(connection, payer, formData, req, res);
       }
     } else {
@@ -251,18 +235,16 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
   }
 });
 
-// ------------------------------------
-// Route: Doorgaan na storten (/continue-token)
-// ------------------------------------
+// --------------------------------------
+// Endpoint: Doorgaan na storten (/continue-token)
+// --------------------------------------
 app.post('/continue-token', upload.single('logo'), async (req, res) => {
   try {
     const { network, tokenName, tokenSymbol, metadataUri, totalSupply, decimals, socials, userWallet, payerSecret } = req.body;
     const formData = { network, tokenName, tokenSymbol, metadataUri, totalSupply, decimals, socials, userWallet };
     
     const connection = new Connection(clusterApiUrl(network));
-    // Herstel de payer wallet uit de meegegeven secret (hex-string)
-    const secretKeyHex = payerSecret;
-    const secretKeyArray = Uint8Array.from(Buffer.from(secretKeyHex, 'hex'));
+    const secretKeyArray = Uint8Array.from(Buffer.from(payerSecret, 'hex'));
     const payer = Keypair.fromSecretKey(secretKeyArray);
     console.log("Continuing with wallet:", payer.publicKey.toBase58());
     
@@ -276,7 +258,6 @@ app.post('/continue-token', upload.single('logo'), async (req, res) => {
       `);
     }
     
-    // Als het saldo nu voldoende is, ga door met tokencreatie
     await processTokenCreation(connection, payer, formData, req, res);
   } catch (error) {
     console.error("Fout tijdens tokencreatie (continue):", error);
@@ -288,7 +269,31 @@ app.post('/continue-token', upload.single('logo'), async (req, res) => {
   }
 });
 
-// Start de server
+// --------------------------------------
+// Endpoint: Liquiditeitspool vormen (/create-liquidity)
+// --------------------------------------
+app.post('/create-liquidity', async (req, res) => {
+  try {
+    const { tokenMint, amountToken, amountSol, payerSecret, network } = req.body;
+    
+    const secretKeyArray = Uint8Array.from(Buffer.from(payerSecret, 'hex'));
+    const payer = Keypair.fromSecretKey(secretKeyArray);
+    const connection = new Connection(clusterApiUrl(network));
+    
+    const { addLiquidity } = require('./liquidityPool');
+    await addLiquidity(payer, tokenMint, amountToken, amountSol);
+    
+    res.send(`
+      <h1>Liquiditeit Toegevoegd</h1>
+      <p>Er is liquiditeit toegevoegd aan de pool voor jouw token.</p>
+      <a href="/">Ga terug</a>
+    `);
+  } catch (error) {
+    console.error("Fout bij het creëren van de liquiditeitspool:", error);
+    res.status(500).send(`Er is een fout opgetreden: ${error.message}`);
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server draait op http://localhost:${port}`);
 });
