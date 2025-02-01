@@ -18,41 +18,32 @@
         </select>
         <p>Een nieuwe wallet wordt automatisch aangemaakt.</p>
       </div>
-
       <div class="section">
         <h2>Token Gegevens</h2>
         <label for="tokenName">Token Naam:</label>
         <input type="text" name="tokenName" id="tokenName" placeholder="Bijv. MijnToken" required>
-
         <label for="tokenSymbol">Token Symbool:</label>
         <input type="text" name="tokenSymbol" id="tokenSymbol" placeholder="Bijv. MTK" required>
-
         <label for="metadataUri">Metadata URI (basis voor extra gegevens):</label>
         <input type="text" name="metadataUri" id="metadataUri" placeholder="https://ipfs.io/ipfs/je-json-bestand" required>
-
         <label for="totalSupply">Totale Supply:</label>
         <input type="number" name="totalSupply" id="totalSupply" placeholder="Bijv. 1000000000" required>
-
         <label for="decimals">Decimals:</label>
         <input type="number" name="decimals" id="decimals" placeholder="Bijv. 9" required>
       </div>
-
       <div class="section">
         <h2>Extra Metadata</h2>
         <label for="socials">Socials (JSON-formaat):</label>
         <textarea name="socials" id="socials" rows="3" placeholder='{"twitter": "https://twitter.com/...", "discord": "https://discord.gg/..."}'></textarea>
-
         <label for="logo">Upload Logo:</label>
         <input type="file" name="logo" id="logo" accept="image/*">
       </div>
-
       <div class="section">
         <h2>Token Distributie</h2>
         <label for="userWallet">Jouw walletadres (70% tokens worden hierheen gestuurd):</label>
         <input type="text" name="userWallet" id="userWallet" placeholder="Bijv. jouw wallet address" required>
         <p>Er wordt automatisch een deposit-adres gegenereerd voor extra SOL-voorziening. Dit adres zie je in het resultaat.</p>
       </div>
-
       <button type="submit">Maak Token</button>
     </form>
   </div>
