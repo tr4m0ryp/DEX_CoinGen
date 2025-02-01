@@ -213,7 +213,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       <a href="/">Ga terug</a>
     `);
 
-  } catch (error) {
+  catch (error) {
     console.error("Fout tijdens tokencreatie:", error);
     res.send(`
       <h1>Er is een fout opgetreden</h1>
