@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const multer  = require('multer');
 const fs = require('fs');
 const path = require('path');
-const QRCode = require('qrcode'); // npm install qrcode
+const QRCode = require('qrcode'); // Voor QR-code generatie
 const {
   Connection,
   clusterApiUrl,
@@ -18,7 +18,7 @@ const {
   SystemProgram,
 } = require('@solana/web3.js');
 
-// Importeer functies van @solana/spl-token als named exports
+// Importeer de functies van @solana/spl-token als named exports
 const {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -26,11 +26,11 @@ const {
   TOKEN_PROGRAM_ID,
 } = require('@solana/spl-token');
 
-// Importeer Metaplex Token Metadata functies
-const {
-  PROGRAM_ID: TOKEN_METADATA_PROGRAM_ID,
-  createCreateMetadataAccountV2Instruction,
-} = require('@metaplex-foundation/mpl-token-metadata');
+// Importeer de functie voor het maken van de metadata account
+const { createCreateMetadataAccountV2Instruction } = require('@metaplex-foundation/mpl-token-metadata');
+
+// Definieer handmatig de Metaplex Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
 // Initialiseer de Express-applicatie
 const app = express();
@@ -80,7 +80,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       const airdropSignature = await connection.requestAirdrop(payer.publicKey, 0.1 * LAMPORTS_PER_SOL);
       await connection.confirmTransaction(airdropSignature);
       console.log("Airdrop successful on devnet.");
-      // In devnet mag je de walletgegevens gerust tonen (voor testdoeleinden)
+      // Op devnet mag je de walletgegevens gerust tonen (voor testdoeleinden)
     } else if (network === 'mainnet-beta') {
       // Voor mainnet-beta: controleer of er voldoende saldo is
       const balance = await connection.getBalance(payer.publicKey);
@@ -101,8 +101,6 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       }
     }
 
-    // Verder met het tokencreatieproces
-
     // Genereer een deposit wallet (bijvoorbeeld voor toekomstige SOL-transacties)
     const depositWallet = Keypair.generate();
     console.log("Gegenereerde Deposit Address:", depositWallet.publicKey.toBase58());
@@ -118,7 +116,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     );
     console.log("Token Mint Address:", mint.toBase58());
 
-    // Bereken de token distributie: 70% naar de opgegeven wallet en 30% naar een nieuw gegenereerd wallet
+    // Verdeel de token supply: 70% naar de door de gebruiker opgegeven wallet en 30% naar een nieuw gegenereerd wallet
     const totalSupplyBig = BigInt(totalSupply);
     const userShare = totalSupplyBig * 70n / 100n;
     const otherShare = totalSupplyBig - userShare;
