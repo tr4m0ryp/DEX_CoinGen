@@ -1,19 +1,76 @@
+// server.js
+
+// Importeer benodigde modules
+const express = require('express');
+const bodyParser = require('body-parser');
+const multer  = require('multer');
+const fs = require('fs');
+const path = require('path');
+const {
+  Connection,
+  clusterApiUrl,
+  Keypair,
+  PublicKey,
+  Transaction,
+  sendAndConfirmTransaction,
+  LAMPORTS_PER_SOL,
+  SystemProgram,
+} = require('@solana/web3.js');
+
+// Importeer de functies van @solana/spl-token als named exports
+const {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  TOKEN_PROGRAM_ID,
+} = require('@solana/spl-token');
+
+// Importeer Metaplex Token Metadata functies
+const {
+  PROGRAM_ID: TOKEN_METADATA_PROGRAM_ID,
+  createCreateMetadataAccountV2Instruction,
+} = require('@metaplex-foundation/mpl-token-metadata');
+
+// Initialiseer de Express-applicatie
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Maak verbinding met het Solana-netwerk (bijvoorbeeld devnet)
+const connection = new Connection(clusterApiUrl("devnet"));
+
+// Configureer Multer voor logo uploads (bestanden worden opgeslagen in de map "uploads")
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    // Unieke bestandsnaam gebaseerd op datum en originele naam
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+const upload = multer({ storage: storage });
+
+// Middleware voor statische bestanden en body-parser
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// POST-route voor tokencreatie
 app.post('/create-token', upload.single('logo'), async (req, res) => {
   try {
     const {
       network,
-      keypairPath,
+      keypairPath,   // Pad naar de keypair (als JSON-bestand)
       tokenName,
       tokenSymbol,
       metadataUri,
       totalSupply,
       decimals,
       socials,
-      userWallet  // Jouw walletadres voor 70%
+      userWallet     // Jouw walletadres voor 70%
     } = req.body;
 
-    // Lees en maak de keypair aan
-    const secretKeyString = fs.readFileSync(expandedKeypairPath, 'utf8');
+    // Lees de keypair uit het opgegeven bestand en maak de keypair aan
+    const secretKeyString = fs.readFileSync(keypairPath, 'utf8');
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
     const payer = Keypair.fromSecretKey(secretKey);
 
@@ -27,7 +84,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       SystemProgram.transfer({
         fromPubkey: payer.publicKey,
         toPubkey: depositWallet.publicKey,
-        lamports: 0.01 * LAMPORTS_PER_SOL,
+        lamports: 0.01 * LAMPORTS_PER_SOL, // bijvoorbeeld 0.01 SOL
       })
     );
     await sendAndConfirmTransaction(connection, transferTx, [payer]);
@@ -91,6 +148,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     // Verwerk het geüploade logo (indien aanwezig)
     let logoUrl = "";
     if (req.file) {
+      // In dit voorbeeld wordt het logo lokaal opgeslagen; in productie upload je naar een permanente opslag (zoals IPFS)
       logoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
       console.log("Logo geüpload naar:", logoUrl);
     }
@@ -109,9 +167,10 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     const metadataData = {
       name: tokenName,
       symbol: tokenSymbol,
-      uri: metadataUri,
+      uri: metadataUri,  // Verwijzing naar een JSON-bestand met extra gegevens
       sellerFeeBasisPoints: 0,
       creators: null,
+      // Extra data zoals logoUrl en socialsObj kun je eventueel hier toevoegen of in het externe JSON-bestand verwerken.
     };
 
     // Voeg metadata toe via het Metaplex Token Metadata programma
@@ -163,4 +222,9 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       <a href="/">Ga terug</a>
     `);
   }
+});
+
+// Start de server
+app.listen(port, () => {
+  console.log(`Server draait op http://localhost:${port}`);
 });
