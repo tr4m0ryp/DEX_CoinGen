@@ -213,15 +213,14 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       <a href="/">Ga terug</a>
     `);
 
-  catch (error) {
-    console.error("Fout tijdens tokencreatie:", error);
-    res.send(`
-      <h1>Er is een fout opgetreden</h1>
-      <p>${error.message}</p>
-      <a href="/">Ga terug</a>
-    `);
-  }
-});
+catch (error) {
+  console.error("Fout tijdens tokencreatie:", error);
+  res.status(500).send(`
+    <h1>Er is een fout opgetreden</h1>
+    <p>${error.message}</p>
+    <a href="/">Ga terug</a>
+  `);
+}
 
 app.listen(port, () => {
   console.log(`Server draait op http://localhost:${port}`);
