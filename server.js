@@ -1,68 +1,16 @@
-// server.js
-
-const express = require('express');
-const bodyParser = require('body-parser');
-const multer  = require('multer');
-const fs = require('fs');
-const path = require('path');
-const {
-  Connection,
-  clusterApiUrl,
-  Keypair,
-  PublicKey,
-  Transaction,
-  sendAndConfirmTransaction,
-  LAMPORTS_PER_SOL,
-  SystemProgram,
-} = require('@solana/web3.js');
-
-// Gebruik de nieuwe API van @solana/spl-token: importeer de functies als named exports
-const {
-  createMint,
-  getOrCreateAssociatedTokenAccount,
-  mintTo,
-  TOKEN_PROGRAM_ID,
-} = require('@solana/spl-token');
-
-// Importeer Metaplex Token Metadata functies
-const {
-  PROGRAM_ID: TOKEN_METADATA_PROGRAM_ID,
-  createCreateMetadataAccountV2Instruction,
-} = require('@metaplex-foundation/mpl-token-metadata');
-
-const app = express();
-const port = process.env.PORT || 3000;
-
-// Multer configuratie voor logo uploads (bestanden komen in de map "uploads")
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    // Unieke bestandsnaam gebaseerd op datum en originele naam
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
-const upload = multer({ storage: storage });
-
-// Middleware: statische bestanden en body-parser
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// POST route voor tokencreatie
-// Gebruik multer om ook het logo-bestand te verwerken
 app.post('/create-token', upload.single('logo'), async (req, res) => {
-  const {
-    network,
-    keypairPath,
-    tokenName,
-    tokenSymbol,
-    metadataUri,
-    totalSupply,
-    decimals,
-    socials,
-    userWallet  // Jouw walletadres voor 70%
-  } = req.body;
+  try {
+    const {
+      network,
+      keypairPath,
+      tokenName,
+      tokenSymbol,
+      metadataUri,
+      totalSupply,
+      decimals,
+      socials,
+      userWallet  // Jouw walletadres voor 70%
+    } = req.body;
 
     // Lees en maak de keypair aan
     const secretKeyString = fs.readFileSync(expandedKeypairPath, 'utf8');
@@ -74,13 +22,12 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     console.log("Gegenereerde Deposit Address:", depositWallet.publicKey.toBase58());
 
     // (Optioneel) Transfer SOL naar het deposit-adres kan hier worden toegevoegd
-    // Voorbeeld (deze code is uitgecommentarieerd):
     /*
     const transferTx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: payer.publicKey,
         toPubkey: depositWallet.publicKey,
-        lamports: 0.01 * LAMPORTS_PER_SOL, // bijvoorbeeld 0.01 SOL
+        lamports: 0.01 * LAMPORTS_PER_SOL,
       })
     );
     await sendAndConfirmTransaction(connection, transferTx, [payer]);
@@ -144,7 +91,6 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     // Verwerk het geüploade logo (indien aanwezig)
     let logoUrl = "";
     if (req.file) {
-      // In dit voorbeeld wordt het logo lokaal opgeslagen; in productie upload je naar een permanente opslag (zoals IPFS)
       logoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
       console.log("Logo geüpload naar:", logoUrl);
     }
@@ -163,12 +109,9 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     const metadataData = {
       name: tokenName,
       symbol: tokenSymbol,
-      uri: metadataUri,  // Dit verwijst naar een JSON-bestand waarin je extra velden (zoals logo en socials) kunt opnemen
+      uri: metadataUri,
       sellerFeeBasisPoints: 0,
       creators: null,
-      // Extra data kun je ook in dit object kwijt, maar doorgaans zet je dit in je externe JSON:
-      // logoUrl: logoUrl,
-      // socials: socialsObj,
     };
 
     // Voeg metadata toe via het Metaplex Token Metadata programma
@@ -176,7 +119,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     const metadataSeeds = [
       Buffer.from('metadata'),
       TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(), // let op: mint is nu een PublicKey
+      mint.toBuffer(),
     ];
     const [metadataPDA] = await PublicKey.findProgramAddress(metadataSeeds, TOKEN_METADATA_PROGRAM_ID);
 
@@ -212,16 +155,12 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       <p>Bewaar deze gegevens zorgvuldig!</p>
       <a href="/">Ga terug</a>
     `);
-
-catch (error) {
-  console.error("Fout tijdens tokencreatie:", error);
-  res.status(500).send(`
-    <h1>Er is een fout opgetreden</h1>
-    <p>${error.message}</p>
-    <a href="/">Ga terug</a>
-  `);
-}
-
-app.listen(port, () => {
-  console.log(`Server draait op http://localhost:${port}`);
+  } catch (error) {
+    console.error("Fout tijdens tokencreatie:", error);
+    res.status(500).send(`
+      <h1>Er is een fout opgetreden</h1>
+      <p>${error.message}</p>
+      <a href="/">Ga terug</a>
+    `);
+  }
 });
