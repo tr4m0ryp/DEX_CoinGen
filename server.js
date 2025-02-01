@@ -6,6 +6,7 @@ const bodyParser = require('body-parser');
 const multer  = require('multer');
 const fs = require('fs');
 const path = require('path');
+const QRCode = require('qrcode'); // npm install qrcode
 const {
   Connection,
   clusterApiUrl,
@@ -17,7 +18,7 @@ const {
   SystemProgram,
 } = require('@solana/web3.js');
 
-// Importeer de functies van @solana/spl-token als named exports
+// Importeer functies van @solana/spl-token als named exports
 const {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -34,9 +35,6 @@ const {
 // Initialiseer de Express-applicatie
 const app = express();
 const port = process.env.PORT || 3000;
-
-// Maak verbinding met het Solana-netwerk (bijvoorbeeld devnet)
-const connection = new Connection(clusterApiUrl("devnet"));
 
 // Configureer Multer voor logo uploads (bestanden worden opgeslagen in de map "uploads")
 const storage = multer.diskStorage({
@@ -58,39 +56,58 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.post('/create-token', upload.single('logo'), async (req, res) => {
   try {
     const {
-      network,
-      keypairPath,   // Pad naar de keypair (als JSON-bestand)
+      network,       // 'devnet' of 'mainnet-beta'
       tokenName,
       tokenSymbol,
       metadataUri,
       totalSupply,
       decimals,
       socials,
-      userWallet     // Jouw walletadres voor 70%
+      userWallet    // Jouw walletadres (waar 70% van de tokens naartoe gaan)
     } = req.body;
 
-    // Lees de keypair uit het opgegeven bestand en maak de keypair aan
-    const secretKeyString = fs.readFileSync(keypairPath, 'utf8');
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    const payer = Keypair.fromSecretKey(secretKey);
+    // Maak verbinding met het gekozen Solana-netwerk
+    const connection = new Connection(clusterApiUrl(network));
+    console.log("Using network:", network);
 
-    // Genereer een deposit wallet (dit adres kan gebruikt worden om SOL te ontvangen)
+    // Genereer een nieuwe wallet (die als payer fungeert)
+    const payer = Keypair.generate();
+    console.log("Generated wallet address:", payer.publicKey.toBase58());
+
+    // Afhankelijk van het netwerk:
+    if (network === 'devnet') {
+      // Vraag een airdrop aan van 0.1 SOL op devnet
+      const airdropSignature = await connection.requestAirdrop(payer.publicKey, 0.1 * LAMPORTS_PER_SOL);
+      await connection.confirmTransaction(airdropSignature);
+      console.log("Airdrop successful on devnet.");
+      // In devnet mag je de walletgegevens gerust tonen (voor testdoeleinden)
+    } else if (network === 'mainnet-beta') {
+      // Voor mainnet-beta: controleer of er voldoende saldo is
+      const balance = await connection.getBalance(payer.publicKey);
+      console.log("Mainnet wallet balance:", balance);
+      if (balance < 0.1 * LAMPORTS_PER_SOL) {
+        // Als onvoldoende saldo, genereer dan een QR-code met wallet-gegevens zodat de gebruiker kan storten
+        const walletDetails = `Address: ${payer.publicKey.toBase58()}\nSecret: ${Buffer.from(payer.secretKey).toString('hex')}`;
+        const qrCodeDataUrl = await QRCode.toDataURL(walletDetails);
+        return res.send(`
+          <h1>Wallet Aangemaakt (Mainnet-beta)</h1>
+          <p>De volgende wallet is aangemaakt. Stort voldoende SOL op dit adres om door te gaan:</p>
+          <p><strong>Wallet Address:</strong> ${payer.publicKey.toBase58()}</p>
+          <p><strong>Secret Key (Hex):</strong> ${Buffer.from(payer.secretKey).toString('hex')}</p>
+          <img src="${qrCodeDataUrl}" alt="QR Code met wallet details"/>
+          <p>Na het storten, herlaad deze pagina of verstuur het formulier opnieuw om het token creatieproces voort te zetten.</p>
+          <a href="/">Ga terug</a>
+        `);
+      }
+    }
+
+    // Verder met het tokencreatieproces
+
+    // Genereer een deposit wallet (bijvoorbeeld voor toekomstige SOL-transacties)
     const depositWallet = Keypair.generate();
     console.log("Gegenereerde Deposit Address:", depositWallet.publicKey.toBase58());
 
-    // (Optioneel) Transfer SOL naar het deposit-adres kan hier worden toegevoegd
-    /*
-    const transferTx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: payer.publicKey,
-        toPubkey: depositWallet.publicKey,
-        lamports: 0.01 * LAMPORTS_PER_SOL, // bijvoorbeeld 0.01 SOL
-      })
-    );
-    await sendAndConfirmTransaction(connection, transferTx, [payer]);
-    */
-
-    // Maak de token mint aan met de nieuwe API
+    // Maak de token mint aan
     console.log("Creëer token mint...");
     const mint = await createMint(
       connection,
@@ -101,12 +118,12 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     );
     console.log("Token Mint Address:", mint.toBase58());
 
-    // Verdeel de token supply in 70% en 30%
+    // Bereken de token distributie: 70% naar de opgegeven wallet en 30% naar een nieuw gegenereerd wallet
     const totalSupplyBig = BigInt(totalSupply);
     const userShare = totalSupplyBig * 70n / 100n;
     const otherShare = totalSupplyBig - userShare;
 
-    // Maak een token account voor het opgegeven walletadres (70% tokens)
+    // Maak een token account aan voor het door de gebruiker opgegeven walletadres (70% tokens)
     const userTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
@@ -123,7 +140,7 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       generatedWallet.publicKey
     );
 
-    // Mint 70% tokens naar de opgegeven wallet
+    // Mint 70% tokens naar de door de gebruiker opgegeven wallet
     console.log("Mint 70% van de tokens naar jouw wallet...");
     await mintTo(
       connection,
@@ -148,7 +165,6 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
     // Verwerk het geüploade logo (indien aanwezig)
     let logoUrl = "";
     if (req.file) {
-      // In dit voorbeeld wordt het logo lokaal opgeslagen; in productie upload je naar een permanente opslag (zoals IPFS)
       logoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
       console.log("Logo geüpload naar:", logoUrl);
     }
@@ -163,14 +179,13 @@ app.post('/create-token', upload.single('logo'), async (req, res) => {
       }
     }
 
-    // Bouw het metadata object. Het externe metadata bestand (via metadataUri) moet ook de extra velden bevatten.
+    // Bouw het metadata object. Het externe metadata bestand (via metadataUri) bevat extra gegevens.
     const metadataData = {
       name: tokenName,
       symbol: tokenSymbol,
-      uri: metadataUri,  // Verwijzing naar een JSON-bestand met extra gegevens
+      uri: metadataUri,
       sellerFeeBasisPoints: 0,
       creators: null,
-      // Extra data zoals logoUrl en socialsObj kun je eventueel hier toevoegen of in het externe JSON-bestand verwerken.
     };
 
     // Voeg metadata toe via het Metaplex Token Metadata programma
